@@ -348,24 +348,34 @@ def rank_classification(targets, predictions, num_classes=2):
   prediction.
 
   Args:
-    targets: list of tuple(int, int), a tuple containing an index and true label
-      value for eached aligned prediction.
+    targets: list of int, the true label value for eached aligned "prediction"
+      score.
     predictions: list of float, a flat list of log likelihood scores for each
       possible label for each example.
     num_classes: int, the number of possible classes for the label.
   Returns:
-    Accuracy and f1 scores.
+    Accuracy, f1, and AUC scores.
   """
   assert len(targets) == len(predictions)
   assert len(targets) % num_classes == 0
 
   targets = np.array(targets[::num_classes])
-  predictions = (
-      np.array(predictions, np.float32).reshape((-1, num_classes)).argmax(-1))
+
+  log_likelihoods = np.array(predictions, np.float32).reshape((-1, num_classes))
+  likelihoods = np.exp(log_likelihoods)
+  probs = likelihoods / likelihoods.sum(-1)[:, np.newaxis]
+  predictions = log_likelihoods.argmax(-1)
 
   if num_classes > 2:
     metrics = mean_multiclass_f1(num_classes)(targets, predictions)
   else:
     metrics = {"f1": 100 * sklearn.metrics.f1_score(targets, predictions)}
-  metrics["accuracy"] = 100*sklearn.metrics.accuracy_score(targets, predictions)
+    probs = probs[:, 1]
+  metrics.update(
+      {
+          "auc-roc": 100*sklearn.metrics.roc_auc_score(
+              targets, probs, multi_class="ovr"),
+          "auc-pr": 100*sklearn.metrics.average_precision_score(targets, probs),
+          "accuary": 100*sklearn.metrics.accuracy_score(targets, predictions),
+      })
   return metrics
